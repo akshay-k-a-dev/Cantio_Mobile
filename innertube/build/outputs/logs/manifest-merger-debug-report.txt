@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml:2:13-83
+INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml:2:13-83
+	package
+		INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml
+	xmlns:android
+		ADDED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml:2:23-81
+uses-sdk
+INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml reason: use-sdk injection requested
+INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml
+INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml
+	android:targetSdkVersion
+		INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml
+	android:minSdkVersion
+		INJECTED from /home/akshayka/app-player/innertube/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1452143161939728412.xml
