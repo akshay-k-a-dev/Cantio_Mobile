@@ -1,0 +1,14 @@
+/screenshots
+crash_log.txt
+logcat*
+*.log
+crash_reports/
+dist/
+build/
+.gradle/
+local.properties
+.idea/
+*.apk
+*.keystore
+*.jks
+*.abb

@@ -41,6 +41,8 @@ fun LibraryScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
+    var showInviteBlendDialog by remember { mutableStateOf(false) }
+    var inviteEmail by remember { mutableStateOf("") }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Liked Songs", "Playlists", "Blends")
@@ -51,16 +53,17 @@ fun LibraryScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         // Tab row
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = NeonViolet
+            contentColor = NeonViolet,
+            edgePadding = 0.dp
         ) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
                     onClick = { selectedTab = index },
-                    text = { Text(title) }
+                    text = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 )
             }
         }
@@ -204,12 +207,24 @@ fun LibraryScreen(
                     }
                     2 -> { // Blends
                         Column(modifier = Modifier.fillMaxSize()) {
+                            Button(
+                                onClick = { showInviteBlendDialog = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonViolet)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Invite to Blend")
+                            }
+
                             // Invites section if any
                             if (uiState.blendInvites.isNotEmpty()) {
                                 Text(
                                     text = "Pending Invites",
                                     style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(16.dp),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     color = NeonViolet
                                 )
                                 uiState.blendInvites.forEach { invite ->
@@ -221,18 +236,32 @@ fun LibraryScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "${invite.sender?.name ?: invite.sender?.username} invited you",
-                                            style = MaterialTheme.typography.bodyMedium
+                                            text = "${invite.sender?.name ?: invite.sender?.username ?: "Someone"} invited you",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Button(
-                                            onClick = { viewModel.acceptBlendInvite(invite.id) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = NeonViolet)
-                                        ) {
-                                            Text("Accept")
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = { viewModel.acceptBlendInvite(invite.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = NeonViolet),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Accept", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            TextButton(
+                                                onClick = { viewModel.rejectBlendInvite(invite.id) },
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Reject", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                            }
                                         }
                                     }
                                 }
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
                             }
 
                             if (uiState.blends.isEmpty()) {
@@ -268,10 +297,17 @@ fun LibraryScreen(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = "Blend between you and ${blend.user2?.name ?: blend.user2?.username ?: "friend"}",
+                                                    text = "Blend: ${blend.user1?.name ?: blend.user1?.username ?: ""} & ${blend.user2?.name ?: blend.user2?.username ?: ""}",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            IconButton(onClick = { viewModel.leaveBlend(blend.id) }) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Leave Blend",
+                                                    tint = MaterialTheme.colorScheme.error
                                                 )
                                             }
                                         }
@@ -317,6 +353,44 @@ fun LibraryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showCreatePlaylistDialog = false }) {
+                    Text("Cancel", color = NeonViolet)
+                }
+            }
+        )
+    }
+
+    if (showInviteBlendDialog) {
+        AlertDialog(
+            onDismissRequest = { showInviteBlendDialog = false },
+            title = { Text("Invite to Blend") },
+            text = {
+                OutlinedTextField(
+                    value = inviteEmail,
+                    onValueChange = { inviteEmail = it },
+                    label = { Text("Friend's Email") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonViolet,
+                        cursorColor = NeonViolet
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (inviteEmail.isNotBlank()) {
+                            viewModel.sendBlendInvite(inviteEmail)
+                            inviteEmail = ""
+                            showInviteBlendDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonViolet)
+                ) {
+                    Text("Send Invite")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInviteBlendDialog = false }) {
                     Text("Cancel", color = NeonViolet)
                 }
             }

@@ -54,8 +54,31 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun sendOtpForReset(email: String, onResult: (ApiResult<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = authRepository.sendOtp(email, "reset")
+            onResult(result)
+        }
+    }
+
+    fun resetPassword(email: String, otp: String, newPassword: String, onResult: (ApiResult<com.appplayer.music.data.api.models.SuccessResponse>) -> Unit) {
+        viewModelScope.launch {
+            val result = authRepository.resetPassword(email, otp, newPassword)
+            onResult(result)
+        }
+    }
+
     fun logout() {
         authRepository.logout()
         _authState.value = null
+    }
+
+    fun checkNeedsOnboarding(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            when (val res = authRepository.needsOnboarding()) {
+                is ApiResult.Success -> onResult(res.data.needsOnboarding)
+                else -> onResult(false)
+            }
+        }
     }
 }

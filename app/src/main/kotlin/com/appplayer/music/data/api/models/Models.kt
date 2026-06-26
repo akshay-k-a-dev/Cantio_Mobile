@@ -199,11 +199,20 @@ data class RecommendationsResponse(val recommendations: Recommendations)
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 data class SearchResult(
-    val videoId: String,
-    val title: String,
+    val videoId: String? = null,
+    val title: String? = null,
     val artist: String? = null,
     val thumbnail: String? = null,
-    val duration: Int? = null
+    val duration: Int? = null,
+
+    val type: String? = null,
+    val playlistId: String? = null,
+    val browseId: String? = null,
+    val author: String? = null,
+    val name: String? = null,
+    val trackCount: Int? = null,
+    val year: String? = null,
+    val subscribers: String? = null
 )
 
 data class SearchResponse(val results: List<SearchResult>)
@@ -222,7 +231,8 @@ data class YTMusicAlbumResponse(
 data class YTMusicArtistResponse(
     val tracks: List<Track>? = null,
     val name: String? = null,
-    val thumbnail: String? = null
+    val thumbnail: String? = null,
+    val subscribers: String? = null
 )
 
 // ─── Generic ─────────────────────────────────────────────────────────────────
@@ -230,3 +240,64 @@ data class YTMusicArtistResponse(
 data class SuccessResponse(val success: Boolean, val message: String? = null)
 data class ErrorResponse(val error: String, val message: String? = null)
 data class MeResponse(val user: UserProfile)
+
+data class RecordPlayRequest(
+    val trackId: String,
+    val title: String,
+    val artist: String,
+    val thumbnail: String?,
+    val duration: Int? = null
+)
+
+data class LyricsResponseItem(
+    val id: Long,
+    val trackName: String,
+    val artistName: String,
+    val albumName: String? = null,
+    val duration: Double? = null,
+    val instrumental: Boolean? = null,
+    val plainLyrics: String? = null,
+    val syncedLyrics: String? = null
+)
+
+data class PopularTrack(
+    val trackId: String,
+    val title: String,
+    val artist: String,
+    val thumbnail: String?,
+    val duration: Int? = null
+)
+
+data class PopularTracksResponse(val tracks: List<PopularTrack>)
+
+data class ResetPasswordRequest(
+    val email: String,
+    val otp: String,
+    val newPassword: String
+)
+
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
+data class UserPreferences(
+    val favoriteLanguages: List<String> = emptyList(),
+    val favoriteArtists: List<String> = emptyList(),
+    val favoriteGenres: List<String> = emptyList(),
+    val onboardingDone: Boolean = false
+)
+
+data class PreferencesResponse(
+    val preferences: UserPreferences
+)
+
+data class NeedsOnboardingResponse(
+    val needsOnboarding: Boolean
+)
+
+data class SeedResponse(
+    val seeded: Boolean,
+    val count: Int? = null,
+    val reason: String? = null
+)

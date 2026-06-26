@@ -14,7 +14,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.appplayer.music"
+        applicationId = "com.cantio.music.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -27,6 +27,15 @@ android {
         buildConfigField("String", "CANTIO_BASE_URL", "\"https://music-mu-lovat.vercel.app\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = "cantio_release_pass"
+            keyAlias = "cantio_alias"
+            keyPassword = "cantio_release_pass"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -35,6 +44,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"

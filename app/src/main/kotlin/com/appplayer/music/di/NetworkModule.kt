@@ -57,12 +57,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit =
-        Retrofit.Builder()
+    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        val gson = com.google.gson.GsonBuilder()
+            .disableHtmlEscaping()
+            .create()
+        return Retrofit.Builder()
             .baseUrl(BuildConfig.CANTIO_BASE_URL + "/")
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
+    }
 
     @Provides
     @Singleton

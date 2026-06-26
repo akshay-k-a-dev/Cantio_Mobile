@@ -7,11 +7,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -24,7 +26,7 @@ import com.appplayer.music.viewmodel.AuthViewModel
 @Composable
 fun LoginScreen(
     isRegisterMode: Boolean = false,
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (needsOnboarding: Boolean) -> Unit,
     onNavigateToRegister: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
@@ -33,17 +35,23 @@ fun LoginScreen(
     var username by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var isOtpSent by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
 
     val authState by viewModel.authState.collectAsState()
 
     // Handle authentication state success
     LaunchedEffect(authState) {
         if (authState is ApiResult.Success) {
-            onLoginSuccess()
+            isLoading = true
+            viewModel.checkNeedsOnboarding { needsOnboarding ->
+                isLoading = false
+                onLoginSuccess(needsOnboarding)
+            }
         }
     }
 
@@ -82,37 +90,8 @@ fun LoginScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Email Field
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it; errorMessage = null },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Email Address") },
-                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NeonViolet,
-                    cursorColor = NeonViolet
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            // Name Field (Register Mode Only)
             if (isRegisterMode) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it; errorMessage = null },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Full Name (Optional)") },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NeonViolet,
-                        cursorColor = NeonViolet
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
+                // Username (Optional)
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it; errorMessage = null },
@@ -126,7 +105,38 @@ fun LoginScreen(
                     ),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                // Name (Optional)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Display Name (Optional)") },
+                    leadingIcon = { Icon(Icons.Default.PersonOutline, contentDescription = null) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonViolet,
+                        cursorColor = NeonViolet
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
+
+            // Email Field
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it; errorMessage = null },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Email Address") },
+                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                singleLine = true,
+                enabled = !(isRegisterMode && isOtpSent),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = NeonViolet,
+                    cursorColor = NeonViolet
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
 
             // Password Field
             OutlinedTextField(
@@ -144,6 +154,29 @@ fun LoginScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
+            if (!isRegisterMode) {
+                // Forgot Password link
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    TextButton(
+                        onClick = {
+                            try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://music-mu-p6h9.vercel.app/forgot-password"))
+                                context.startActivity(intent)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Reset your password on the browser and return to login",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Could not open browser", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        Text("Forgot Password?", color = NeonViolet)
+                    }
+                }
+            }
+
             // OTP Field (Register Mode & OTP Sent Only)
             if (isRegisterMode && isOtpSent) {
                 OutlinedTextField(
@@ -160,7 +193,7 @@ fun LoginScreen(
                 )
             }
 
-            // Error display
+            // Error / Success displays
             if (errorMessage != null) {
                 Text(
                     text = errorMessage!!,
@@ -169,29 +202,48 @@ fun LoginScreen(
                 )
             }
 
+            if (successMessage != null) {
+                Text(
+                    text = successMessage!!,
+                    color = Color(0xFF4CAF50),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
 
-            // Primary action button
+            // Primary Action Button
             Button(
                 onClick = {
                     val trimmedEmail = email.trim()
                     if (isRegisterMode) {
                         if (!isOtpSent) {
+                            if (trimmedEmail.isEmpty() || password.isEmpty()) {
+                                errorMessage = "Email and Password cannot be empty"
+                                return@Button
+                            }
                             isLoading = true
                             viewModel.sendOtp(trimmedEmail) { result ->
                                 isLoading = false
                                 when (result) {
-                                    is ApiResult.Success -> isOtpSent = true
+                                    is ApiResult.Success -> {
+                                        isOtpSent = true
+                                        successMessage = "OTP sent successfully to $trimmedEmail!"
+                                    }
                                     is ApiResult.Error -> errorMessage = result.message
                                 }
                             }
                         } else {
+                            if (otpCode.isEmpty()) {
+                                errorMessage = "Please enter the OTP verification code"
+                                return@Button
+                            }
                             isLoading = true
                             viewModel.register(
                                 email = trimmedEmail,
                                 password = password,
-                                username = username.trim().takeIf { it.isNotBlank() },
-                                name = name.trim().takeIf { it.isNotBlank() },
+                                username = username.takeIf { it.isNotBlank() },
+                                name = name.takeIf { it.isNotBlank() },
                                 otp = otpCode.trim()
                             ) { result ->
                                 isLoading = false
@@ -201,6 +253,10 @@ fun LoginScreen(
                             }
                         }
                     } else {
+                        if (trimmedEmail.isEmpty() || password.isEmpty()) {
+                            errorMessage = "Email and Password cannot be empty"
+                            return@Button
+                        }
                         isLoading = true
                         viewModel.login(trimmedEmail, password) { result ->
                             isLoading = false
@@ -222,15 +278,21 @@ fun LoginScreen(
                 } else {
                     Text(
                         text = if (isRegisterMode) {
-                            if (isOtpSent) "Register" else "Send OTP Code"
-                        } else "Sign In"
+                            if (isOtpSent) "Verify & Register" else "Send Registration OTP"
+                        } else "Sign In",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            // Toggle mode button
+            // Toggle Mode Button
             TextButton(
-                onClick = onNavigateToRegister,
+                onClick = {
+                    onNavigateToRegister()
+                    successMessage = null
+                    errorMessage = null
+                },
                 enabled = !isLoading
             ) {
                 Text(

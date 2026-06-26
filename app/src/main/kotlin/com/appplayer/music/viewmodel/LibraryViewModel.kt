@@ -28,6 +28,16 @@ class LibraryViewModel @Inject constructor(
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            musicRepository.likedTracks.collect { tracks ->
+                _uiState.update { it.copy(likedTracks = tracks) }
+            }
+        }
+        viewModelScope.launch {
+            musicRepository.playlists.collect { playlists ->
+                _uiState.update { it.copy(playlists = playlists) }
+            }
+        }
         loadAll()
     }
 
@@ -35,26 +45,15 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            // Load all in parallel
-            val likesDeferred = launch {
-                when (val r = musicRepository.getLikedTracks()) {
-                    is ApiResult.Success -> _uiState.update { it.copy(likedTracks = r.data) }
-                    is ApiResult.Error -> Unit // non-fatal
-                }
-            }
-            val playlistsDeferred = launch {
-                when (val r = musicRepository.getPlaylists()) {
-                    is ApiResult.Success -> _uiState.update { it.copy(playlists = r.data) }
-                    is ApiResult.Error -> Unit
-                }
-            }
-            val blendsDeferred = launch {
+            launch { musicRepository.getLikedTracks() }
+            launch { musicRepository.getPlaylists() }
+            launch {
                 when (val r = musicRepository.getBlends()) {
                     is ApiResult.Success -> _uiState.update { it.copy(blends = r.data) }
                     is ApiResult.Error -> Unit
                 }
             }
-            val invitesDeferred = launch {
+            launch {
                 when (val r = musicRepository.getBlendInvites()) {
                     is ApiResult.Success -> _uiState.update { it.copy(blendInvites = r.data) }
                     is ApiResult.Error -> Unit
@@ -68,36 +67,57 @@ class LibraryViewModel @Inject constructor(
     fun likeTrack(videoId: String, title: String, artist: String, thumbnail: String?, duration: Int?) {
         viewModelScope.launch {
             musicRepository.likeTrack(videoId, title, artist, thumbnail, duration)
-            loadAll()
         }
     }
 
     fun unlikeTrack(videoId: String) {
         viewModelScope.launch {
             musicRepository.unlikeTrack(videoId)
-            _uiState.update { it.copy(likedTracks = it.likedTracks.filter { t -> t.trackId != videoId }) }
         }
     }
 
     fun createPlaylist(name: String) {
         viewModelScope.launch {
-            when (val result = musicRepository.createPlaylist(name)) {
-                is ApiResult.Success -> _uiState.update { it.copy(playlists = listOf(result.data) + it.playlists) }
-                is ApiResult.Error -> Unit
-            }
+            musicRepository.createPlaylist(name)
         }
     }
 
     fun deletePlaylist(id: String) {
         viewModelScope.launch {
             musicRepository.deletePlaylist(id)
-            _uiState.update { it.copy(playlists = it.playlists.filter { p -> p.id != id }) }
         }
     }
 
     fun acceptBlendInvite(inviteId: String) {
         viewModelScope.launch {
             when (val result = musicRepository.acceptBlendInvite(inviteId)) {
+                is ApiResult.Success -> loadAll()
+                is ApiResult.Error -> Unit
+            }
+        }
+    }
+
+    fun rejectBlendInvite(inviteId: String) {
+        viewModelScope.launch {
+            when (musicRepository.rejectBlendInvite(inviteId)) {
+                is ApiResult.Success -> loadAll()
+                is ApiResult.Error -> Unit
+            }
+        }
+    }
+
+    fun sendBlendInvite(email: String) {
+        viewModelScope.launch {
+            when (musicRepository.sendBlendInvite(email)) {
+                is ApiResult.Success -> loadAll()
+                is ApiResult.Error -> Unit
+            }
+        }
+    }
+
+    fun leaveBlend(blendId: String) {
+        viewModelScope.launch {
+            when (musicRepository.leaveBlend(blendId)) {
                 is ApiResult.Success -> loadAll()
                 is ApiResult.Error -> Unit
             }

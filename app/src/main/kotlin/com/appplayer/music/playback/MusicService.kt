@@ -40,6 +40,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -52,6 +55,7 @@ class MusicService : MediaLibraryService(), Player.Listener {
     @Inject @PlayerCache lateinit var playerCache: SimpleCache
     @Inject @DownloadCache lateinit var downloadCache: SimpleCache
     @Inject lateinit var ytPlayerUtils: YTPlayerUtils
+    @Inject lateinit var settingsManager: com.appplayer.music.utils.SettingsManager
 
     lateinit var player: ExoPlayer
     private lateinit var mediaSession: MediaLibrarySession
@@ -115,12 +119,15 @@ class MusicService : MediaLibraryService(), Player.Listener {
         startForegroundCompat()
         createPlayer()
         createMediaSession()
+        startCrossfadeMonitor()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession =
         mediaSession
 
     override fun onDestroy() {
+        crossfadeJob?.cancel()
+        com.appplayer.music.utils.EqualizerManager.getInstance(this).release()
         mediaSession.release()
         player.release()
         serviceJob.cancel()
@@ -158,6 +165,13 @@ class MusicService : MediaLibraryService(), Player.Listener {
             .build()
 
         player.addListener(this)
+        com.appplayer.music.utils.EqualizerManager.getInstance(this).initEqualizer(player.audioSessionId)
+    }
+
+    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+        super.onAudioSessionIdChanged(audioSessionId)
+        Timber.d("Audio session ID changed: $audioSessionId")
+        com.appplayer.music.utils.EqualizerManager.getInstance(this).initEqualizer(audioSessionId)
     }
 
     private fun createMediaSession() {
@@ -213,7 +227,7 @@ class MusicService : MediaLibraryService(), Player.Listener {
             Timber.d("RESOLVING STREAM: $mediaId")
 
             // 2. Resolve fresh stream URL via InnerTube
-            val playbackData = runBlocking(Dispatchers.IO) {
+            val playbackData = kotlinx.coroutines.runBlocking {
                 ytPlayerUtils.playerResponseForPlayback(
                     videoId = mediaId,
                     connectivityManager = connectivityManager
@@ -262,6 +276,24 @@ class MusicService : MediaLibraryService(), Player.Listener {
                 Timber.w("Retrying playback for $currentMediaId with fresh resolution...")
                 player.prepare()
                 player.play()
+            } else {
+                // Retry failed as well. Toast and move to next
+                val trackTitle = player.currentMediaItem?.mediaMetadata?.title ?: "Track"
+                android.widget.Toast.makeText(
+                    this,
+                    "\"$trackTitle\" is unavailable, skipping...",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+
+                if (player.hasNextMediaItem()) {
+                    Timber.i("Skipping to next media item because $currentMediaId failed to play.")
+                    player.seekToNextMediaItem()
+                    player.prepare()
+                    player.play()
+                } else {
+                    Timber.w("No next media item to skip to. Stopping playback.")
+                    player.stop()
+                }
             }
         }
     }
@@ -355,6 +387,135 @@ class MusicService : MediaLibraryService(), Player.Listener {
 
     fun invalidateStreamCache(videoId: String) {
         songUrlCache.remove(videoId)
+    }
+
+    private var crossfadeJob: Job? = null
+
+    private fun startCrossfadeMonitor() {
+        crossfadeJob?.cancel()
+        crossfadeJob = serviceScope.launch {
+            var currentTrackId: String? = null
+            var currentAnalysis: com.appplayer.music.utils.SongAnalysis? = null
+            var isFadingIn = false
+            var fadeInDuration = 2000L
+            var fadeInStart = 0L
+
+            while (isActive) {
+                delay(200)
+                
+                if (!player.isPlaying) continue
+
+                val mediaItem = player.currentMediaItem ?: continue
+                val videoId = mediaItem.mediaId
+                val position = player.currentPosition
+                val duration = player.duration
+
+                // 1. If song changed, load analysis
+                if (videoId != currentTrackId) {
+                    currentTrackId = videoId
+                    currentAnalysis = null
+                    isFadingIn = false
+                    
+                    if (settingsManager.getSmartCrossfade() && duration > 0) {
+                        try {
+                            val analysis = com.appplayer.music.utils.SongAnalyzer.analyzeSong(this@MusicService, videoId, duration)
+                            currentAnalysis = analysis
+                            
+                            // Check if we should skip intro silence
+                            if (analysis.introStart > 0 && position < analysis.introStart) {
+                                player.seekTo(analysis.introStart)
+                            }
+                            
+                            // Initialize fade in
+                            isFadingIn = true
+                            fadeInStart = analysis.introStart
+                            fadeInDuration = (analysis.introEnd - analysis.introStart).coerceIn(1000L, 5000L)
+                            
+                            Timber.d("Crossfade: loaded analysis for $videoId (Intro: ${analysis.introStart} to ${analysis.introEnd}, Outro starts at ${analysis.outroStart})")
+                        } catch (e: Exception) {
+                            Timber.e(e, "Error loading song analysis")
+                        }
+                    }
+                }
+
+                val analysis = currentAnalysis
+                val isSmart = settingsManager.getSmartCrossfade() && analysis != null && !isGaplessTrack(mediaItem)
+
+                if (isSmart && analysis != null) {
+                    val targetVolume = if (settingsManager.getLoudnessMatching()) {
+                        val dbDiff = -14.0 - analysis.averageLoudness
+                        Math.pow(10.0, dbDiff / 20.0).toFloat().coerceIn(0.2f, 1.0f)
+                    } else {
+                        1.0f
+                    }
+
+                    if (isFadingIn) {
+                        val elapsed = position - fadeInStart
+                        if (elapsed >= fadeInDuration || elapsed < 0) {
+                            isFadingIn = false
+                            player.volume = targetVolume
+                        } else {
+                            val progress = elapsed.toFloat() / fadeInDuration
+                            val volumeFactor = kotlin.math.sin(progress * (Math.PI / 2)).toFloat()
+                            player.volume = targetVolume * volumeFactor
+                        }
+                    } else if (position >= analysis.outroStart) {
+                        // Preload next track
+                        if (player.hasNextMediaItem()) {
+                            val nextIndex = player.nextMediaItemIndex
+                            val nextItem = player.getMediaItemAt(nextIndex)
+                            val nextVideoId = nextItem.mediaId
+                            if (!songUrlCache.containsKey(nextVideoId)) {
+                                serviceScope.launch(Dispatchers.IO) {
+                                    try {
+                                        ytPlayerUtils.playerResponseForPlayback(nextVideoId, connectivityManager).getOrNull()?.let { data ->
+                                            val expiryMs = System.currentTimeMillis() + (data.streamExpiresInSeconds * 1000L)
+                                            songUrlCache[nextVideoId] = data.streamUrl to expiryMs
+                                            songClientMap[nextVideoId] = data.streamClient
+                                            Timber.d("Crossfade: Preloaded next song stream URL for $nextVideoId")
+                                        }
+                                    } catch (e: Exception) {
+                                        Timber.w(e, "Crossfade: Failed to preload next song $nextVideoId")
+                                    }
+                                }
+                            }
+                        }
+
+                        // Fade out
+                        val outroDuration = (analysis.outroEnd - analysis.outroStart).coerceIn(2000L, 10000L)
+                        val elapsed = position - analysis.outroStart
+                        if (elapsed >= outroDuration) {
+                            player.volume = 0f
+                            // Transition to next song
+                            if (player.hasNextMediaItem()) {
+                                player.seekToNextMediaItem()
+                            } else {
+                                player.pause()
+                            }
+                        } else {
+                            val progress = (elapsed.toFloat() / outroDuration).coerceIn(0f, 1f)
+                            val volumeFactor = kotlin.math.cos(progress * (Math.PI / 2)).toFloat()
+                            player.volume = targetVolume * volumeFactor
+                        }
+                    } else {
+                        // Normal playback: target volume
+                        player.volume = targetVolume
+                    }
+                } else {
+                    // Fallback to normal volume
+                    player.volume = 1.0f
+                }
+            }
+        }
+    }
+
+    private fun isGaplessTrack(mediaItem: MediaItem): Boolean {
+        if (!settingsManager.getGaplessPlayback()) return false
+        val title = mediaItem.mediaMetadata.title?.toString()?.lowercase() ?: ""
+        val artist = mediaItem.mediaMetadata.artist?.toString()?.lowercase() ?: ""
+        return title.contains("live") || title.contains("mix") || title.contains("nonstop") || 
+               title.contains("non-stop") || title.contains("continuous") || title.contains("session") ||
+               artist.contains("dj") || artist.contains("mix")
     }
 
     companion object {

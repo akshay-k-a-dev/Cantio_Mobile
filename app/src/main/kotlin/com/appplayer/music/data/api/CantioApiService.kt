@@ -17,8 +17,25 @@ interface CantioApiService {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
 
+    @POST("api/auth/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<SuccessResponse>
+
+    @POST("api/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): Response<SuccessResponse>
+
     @GET("api/auth/me")
     suspend fun getMe(): Response<MeResponse>
+
+    // ─── Preferences & Onboarding ─────────────────────────────────────────────
+
+    @GET("api/preferences/needs-onboarding")
+    suspend fun needsOnboarding(): Response<NeedsOnboardingResponse>
+
+    @POST("api/preferences")
+    suspend fun savePreferences(@Body preferences: UserPreferences): Response<PreferencesResponse>
+
+    @POST("api/preferences/seed")
+    suspend fun seedRecommendations(): Response<SeedResponse>
 
     // ─── Search ──────────────────────────────────────────────────────────────
 
@@ -34,6 +51,12 @@ interface CantioApiService {
         @Query("type") type: String = "playlists",
         @Query("limit") limit: Int = 20
     ): Response<SearchResponse>
+
+    @GET("api/playlists/public")
+    suspend fun getPublicPlaylists(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 20
+    ): Response<PlaylistsResponse>
 
     // ─── Track Metadata ───────────────────────────────────────────────────────
 
@@ -59,6 +82,11 @@ interface CantioApiService {
 
     @GET("api/likes/{trackId}")
     suspend fun isTrackLiked(@Path("trackId") trackId: String): Response<IsLikedResponse>
+
+    // ─── Play History ────────────────────────────────────────────────────────
+
+    @POST("api/history")
+    suspend fun recordPlay(@Body request: RecordPlayRequest): Response<Any>
 
     // ─── Playlists ────────────────────────────────────────────────────────────
 
@@ -97,6 +125,9 @@ interface CantioApiService {
 
     @GET("api/playlists/public/{identifier}")
     suspend fun getPublicPlaylist(@Path("identifier") identifier: String): Response<PlaylistResponse>
+
+    @GET("api/playlists/discover/popular")
+    suspend fun getPopularTracks(): Response<PopularTracksResponse>
 
     // ─── Recommendations ─────────────────────────────────────────────────────
 
@@ -146,5 +177,5 @@ interface CantioApiService {
     suspend fun getLyrics(
         @Query("track_name") trackName: String,
         @Query("artist_name") artistName: String
-    ): Response<List<Any>> // LRCLIB returns array of results
+    ): Response<List<LyricsResponseItem>>
 }

@@ -7,11 +7,15 @@ object Screen {
     const val NOW_PLAYING = "now_playing"
     const val PLAYLIST_DETAIL = "playlist/{playlistId}"
     const val BLEND_DETAIL = "blend/{blendId}"
+    const val YTMUSIC_DETAIL = "ytmusic/{type}/{id}"
     const val LOGIN = "login"
     const val REGISTER = "register"
+    const val SETTINGS = "settings"
+    const val ONBOARDING = "onboarding"
 
     fun playlistDetail(id: String) = "playlist/$id"
     fun blendDetail(id: String) = "blend/$id"
+    fun ytmusicDetail(type: String, id: String) = "ytmusic/$type/$id"
 }
 
 sealed class BottomNavItem(val route: String, val label: String, val iconRes: String) {

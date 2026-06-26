@@ -20,6 +20,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.appplayer.music.data.api.models.Track
 import com.appplayer.music.playback.PlayerConnection
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import com.appplayer.music.ui.theme.DarkSurface2
 import com.appplayer.music.ui.theme.NeonViolet
 import com.appplayer.music.viewmodel.HomeViewModel
@@ -28,9 +30,11 @@ import com.appplayer.music.viewmodel.HomeViewModel
 fun HomeScreen(
     playerConnection: PlayerConnection,
     onNavigateToNowPlaying: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = Modifier
@@ -50,16 +54,29 @@ fun HomeScreen(
                     )
                     .padding(horizontal = 20.dp, vertical = 24.dp)
             ) {
-                Column {
-                    Text(
-                        text = "Good music 🎵",
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                    Text(
-                        text = "What's on today",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Cantio 🎵",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Text(
+                            text = "What's on today",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
@@ -85,7 +102,7 @@ fun HomeScreen(
         } else {
             val recs = uiState.recommendations
 
-            // For You
+            // 1. For You
             if (recs?.forYou?.isNotEmpty() == true) {
                 item {
                     SectionHeader("For You")
@@ -95,7 +112,7 @@ fun HomeScreen(
                     ) {
                         items(recs.forYou.take(10)) { track ->
                             TrackCard(track = track, onClick = {
-                                playerConnection.playQueue(recs.forYou, recs.forYou.indexOf(track))
+                                playerConnection.playWithRecommendations(track, viewModel.musicRepository)
                                 onNavigateToNowPlaying()
                             })
                         }
@@ -104,29 +121,67 @@ fun HomeScreen(
                 }
             }
 
-            // Recently Played
+            // 2. Discover Something New
+            if (uiState.discoveredTracks.isNotEmpty()) {
+                item {
+                    SectionHeader("Discover Something New")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.discoveredTracks.take(10)) { track ->
+                            TrackCard(track = track, onClick = {
+                                playerConnection.playWithRecommendations(track, viewModel.musicRepository)
+                                onNavigateToNowPlaying()
+                            })
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            // 3. What Others Love
+            if (uiState.popularTracks.isNotEmpty()) {
+                item {
+                    SectionHeader("What Others Love")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.popularTracks.take(10)) { track ->
+                            TrackCard(track = track, onClick = {
+                                playerConnection.playWithRecommendations(track, viewModel.musicRepository)
+                                onNavigateToNowPlaying()
+                            })
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            // 4. Continue Listening (Recently Played)
             if (recs?.recentlyPlayed?.isNotEmpty() == true) {
-                item { SectionHeader("Recently Played") }
+                item { SectionHeader("Continue Listening") }
                 items(recs.recentlyPlayed.take(5)) { track ->
                     TrackListItem(track = track, onClick = {
-                        playerConnection.playQueue(recs.recentlyPlayed, recs.recentlyPlayed.indexOf(track))
+                        playerConnection.playWithRecommendations(track, viewModel.musicRepository)
                         onNavigateToNowPlaying()
                     })
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
 
-            // Most Played
+            // 5. Your Favorites (Most Played)
             if (recs?.mostPlayed?.isNotEmpty() == true) {
                 item {
-                    SectionHeader("Most Played")
+                    SectionHeader("Your Favorites")
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(recs.mostPlayed.take(8)) { track ->
                             TrackCard(track = track, onClick = {
-                                playerConnection.playQueue(recs.mostPlayed, recs.mostPlayed.indexOf(track))
+                                playerConnection.playWithRecommendations(track, viewModel.musicRepository)
                                 onNavigateToNowPlaying()
                             })
                         }
@@ -135,7 +190,7 @@ fun HomeScreen(
                 }
             }
 
-            // Top Artists
+            // 6. Top Artists
             if (recs?.topArtists?.isNotEmpty() == true) {
                 item { SectionHeader("Top Artists") }
                 items(recs.topArtists) { artist ->

@@ -1,2 +1,0 @@
-great now we need to implemtent features in the web app like have an option to send and accept blends 
-the web apps  player controll, queue management ,shufle , repeat ,share ,sleep ,account management ,lyrics fetching , serach(seperate song,playlist ,album and artist , when new user create acccount the web apps onboarding flow ,app is crashing while opening playlists and blends
