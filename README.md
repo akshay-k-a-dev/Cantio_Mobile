@@ -42,6 +42,17 @@ To build a release production APK:
 
 The resulting production APK will be compiled into the `dist/` or `app/build/outputs/apk/release/` directory.
 
+## References & Acknowledgements
+
+Cantio is built utilizing resources, architectures, and design concepts from the following projects:
+
+- [Cantio Web (akshay-k-a-dev/Cantio)](https://github.com/akshay-k-a-dev/Cantio)
+- [NewPipe (TeamNewPipe/NewPipe)](https://github.com/TeamNewPipe/NewPipe)
+- [ArchiveTune (ArchiveTuneApp/ArchiveTune)](https://github.com/ArchiveTuneApp/ArchiveTune)
+- [metrolist (metrolistgroup/metrolist)](https://github.com/metrolistgroup/metrolist)
+- [OuterTune (OuterTune/OuterTune)](https://github.com/OuterTune/OuterTune)
+- [InnerTune (z-huang/innertune)](https://github.com/z-huang/innertune)
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
