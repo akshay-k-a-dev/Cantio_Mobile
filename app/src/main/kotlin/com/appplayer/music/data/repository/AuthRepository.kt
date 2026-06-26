@@ -48,7 +48,7 @@ class AuthRepository @Inject constructor(
     suspend fun sendOtp(email: String, purpose: String = "register"): ApiResult<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val response = api.sendOtp(SendOtpRequest(email, purpose))
+                val response = api.sendOtp(SendOtpRequest(email.lowercase().trim(), purpose))
                 if (response.isSuccessful) ApiResult.Success(Unit)
                 else ApiResult.Error(parseErrorBody(response.errorBody()?.string(), "Failed to send OTP"), response.code())
             }.getOrElse { ApiResult.Error(it.message ?: "Network error") }
@@ -62,7 +62,7 @@ class AuthRepository @Inject constructor(
         otp: String
     ): ApiResult<AuthResponse> = withContext(Dispatchers.IO) {
         runCatching {
-            val response = api.register(RegisterRequest(email, password, username, name, otp))
+            val response = api.register(RegisterRequest(email.lowercase().trim(), password, username, name, otp))
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
                 tokenManager.saveToken(body.token)
@@ -79,7 +79,7 @@ class AuthRepository @Inject constructor(
     suspend fun login(email: String, password: String): ApiResult<AuthResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val response = api.login(LoginRequest(email, password))
+                val response = api.login(LoginRequest(email.lowercase().trim(), password))
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     tokenManager.saveToken(body.token)
@@ -107,7 +107,7 @@ class AuthRepository @Inject constructor(
     suspend fun resetPassword(email: String, otp: String, newPassword: String): ApiResult<SuccessResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val response = api.resetPassword(ResetPasswordRequest(email, otp, newPassword))
+                val response = api.resetPassword(ResetPasswordRequest(email.lowercase().trim(), otp, newPassword))
                 if (response.isSuccessful && response.body() != null) {
                     ApiResult.Success(response.body()!!)
                 } else {

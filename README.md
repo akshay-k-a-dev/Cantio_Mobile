@@ -44,14 +44,9 @@ The resulting production APK will be compiled into the `dist/` or `app/build/out
 
 ## References & Acknowledgements
 
-Cantio is built utilizing resources, architectures, and design concepts from the following projects:
+This mobile application is built to extend and sync with the main Cantio ecosystem:
 
 - [Cantio Web (akshay-k-a-dev/Cantio)](https://github.com/akshay-k-a-dev/Cantio)
-- [NewPipe (TeamNewPipe/NewPipe)](https://github.com/TeamNewPipe/NewPipe)
-- [ArchiveTune (ArchiveTuneApp/ArchiveTune)](https://github.com/ArchiveTuneApp/ArchiveTune)
-- [metrolist (metrolistgroup/metrolist)](https://github.com/metrolistgroup/metrolist)
-- [OuterTune (OuterTune/OuterTune)](https://github.com/OuterTune/OuterTune)
-- [InnerTune (z-huang/innertune)](https://github.com/z-huang/innertune)
 
 ## License
 

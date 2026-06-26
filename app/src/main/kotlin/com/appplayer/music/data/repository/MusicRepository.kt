@@ -367,7 +367,7 @@ class MusicRepository @Inject constructor(
     suspend fun sendBlendInvite(email: String): ApiResult<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val response = api.sendBlendInvite(BlendInviteRequest(email))
+                val response = api.sendBlendInvite(BlendInviteRequest(email.lowercase().trim()))
                 if (response.isSuccessful) ApiResult.Success(Unit)
                 else ApiResult.Error(response.errorBody()?.string() ?: "Failed to send invite", response.code())
             }.getOrElse { ApiResult.Error(it.message ?: "Network error") }
