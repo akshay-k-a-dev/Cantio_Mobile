@@ -2,7 +2,7 @@ name: APK Release
 
 on:
   push:
-    branches: [Test]
+    branches: [Test,main]
   workflow_dispatch:
 
 jobs:
