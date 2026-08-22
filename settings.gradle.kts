@@ -17,9 +17,9 @@ dependencyResolutionManagement {
             url = uri("https://maven.pkg.github.com/akshay-k-a-dev/NewPipeExtractor")
             credentials {
                 username = providers.gradleProperty("gpr.user")
-                    .orElse(providers.environmentVariable("GITHUB_ACTOR")).get()
+                    .orElse(providers.environmentVariable("GPR_USER")).get()
                 password = providers.gradleProperty("gpr.token")
-                    .orElse(providers.environmentVariable("GITHUB_TOKEN")).get()
+                    .orElse(providers.environmentVariable("GPR_KEY")).get()
             }
         }
     }
