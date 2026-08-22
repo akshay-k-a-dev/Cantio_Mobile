@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.timber)
 
     implementation("org.brotli:dec:0.1.2")
-    implementation("com.github.MetrolistGroup:MetrolistExtractor:f0a00f5") {
+    implementation("com.github.MetrolistGroup:MetrolistExtractor:3cd3341") {
         exclude(group = "com.google.protobuf")
     }
 }
