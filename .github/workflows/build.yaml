@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GPR_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -46,4 +46,4 @@ jobs:
           git diff --cached --quiet || git commit -m "ci: update APK in dist"
           git push
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GPR_TOKEN }}
