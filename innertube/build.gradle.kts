@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.timber)
 
     implementation("org.brotli:dec:0.1.2")
-    implementation("net.newpipe:extractor:0.0.1") {
+    implementation("net.newpipe:extractor:v0.26.5") {
         exclude(group = "com.google.protobuf")
     }
 }
