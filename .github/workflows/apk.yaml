@@ -1,6 +1,8 @@
 name: APK Release
 
 on:
+  push:
+    branches: [Test]
   workflow_dispatch:
 
 jobs:
