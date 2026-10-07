@@ -2,8 +2,11 @@ name: APK Release
 
 on:
   push:
-    branches: [Test,main]
+    branches: [main, Test]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   apk:
@@ -16,8 +19,8 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: "21"
+          distribution: "temurin"
 
       - name: Fix Gradle Java home
         run: sed -i '/org.gradle.java.home/d' gradle.properties
