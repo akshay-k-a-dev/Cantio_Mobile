@@ -18,7 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -276,6 +278,18 @@ class PlayerConnection @Inject constructor(
         _sleepTimerTimeLeft.value = 0L
     }
 
+    /**
+     * Suspends until the MediaController is connected (or times out after 5s).
+     * Prevents silent no-ops when play is triggered before the controller is ready.
+     */
+    private suspend fun awaitController(): MediaController? {
+        controller?.let { return it }
+        return withTimeoutOrNull(5_000L) {
+            _isConnected.first { it }
+            controller
+        }
+    }
+
     fun playTrack(track: Track) {
         val mediaItem = MediaItem.Builder()
             .setMediaId(track.videoId)
@@ -289,9 +303,12 @@ class PlayerConnection @Inject constructor(
                     .build()
             )
             .build()
-        controller?.setMediaItem(mediaItem)
-        controller?.prepare()
-        controller?.play()
+        scope.launch {
+            val ctrl = awaitController() ?: return@launch
+            ctrl.setMediaItem(mediaItem)
+            ctrl.prepare()
+            ctrl.play()
+        }
     }
 
     fun playWithRecommendations(
@@ -340,10 +357,8 @@ class PlayerConnection @Inject constructor(
                         .build()
                 }
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    val ctrl = controller
-                    if (ctrl != null) {
-                        ctrl.addMediaItems(mediaItems)
-                    }
+                    val ctrl = awaitController()
+                    ctrl?.addMediaItems(mediaItems)
                 }
                 saveQueueState()
             }
@@ -440,9 +455,12 @@ class PlayerConnection @Inject constructor(
                 )
                 .build()
         }
-        controller?.setMediaItems(mediaItems, startIndex, 0)
-        controller?.prepare()
-        controller?.play()
+        scope.launch {
+            val ctrl = awaitController() ?: return@launch
+            ctrl.setMediaItems(mediaItems, startIndex, 0)
+            ctrl.prepare()
+            ctrl.play()
+        }
     }
 
     fun addToQueue(track: Track) {

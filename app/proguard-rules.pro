@@ -6,6 +6,14 @@
 
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
+# Mozilla Rhino JS engine references desktop Java classes not available on Android
+-dontwarn java.beans.BeanDescriptor
+-dontwarn java.beans.BeanInfo
+-dontwarn java.beans.IntrospectionException
+-dontwarn java.beans.Introspector
+-dontwarn java.beans.PropertyDescriptor
+-dontwarn javax.script.ScriptEngineFactory
+
 # Retrofit rules
 -keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
 -dontwarn retrofit2.**

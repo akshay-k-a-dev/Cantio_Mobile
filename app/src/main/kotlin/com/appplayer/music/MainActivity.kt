@@ -194,7 +194,9 @@ fun AppContent(
     )
 
     val showBottomBar = currentDestination?.route in listOf(Screen.HOME, Screen.SEARCH, Screen.LIBRARY)
-    val showMiniPlayer = currentTrack != null && currentDestination?.route != Screen.NOW_PLAYING
+    // Capture into a local val so the null-check and usage are on the same snapshot
+    val track = currentTrack
+    val showMiniPlayer = track != null && currentDestination?.route != Screen.NOW_PLAYING
 
     val startDestination = if (isLoggedIn) Screen.HOME else Screen.LOGIN
 
@@ -208,12 +210,14 @@ fun AppContent(
                     enter = slideInVertically { it },
                     exit = slideOutVertically { it }
                 ) {
-                    MiniPlayer(
-                        track = currentTrack!!,
-                        isPlaying = isPlaying,
-                        onPlayPause = { playerConnection.togglePlayPause() },
-                        onClick = { navController.navigate(Screen.NOW_PLAYING) }
-                    )
+                    if (track != null) {
+                        MiniPlayer(
+                            track = track,
+                            isPlaying = isPlaying,
+                            onPlayPause = { playerConnection.togglePlayPause() },
+                            onClick = { navController.navigate(Screen.NOW_PLAYING) }
+                        )
+                    }
                 }
 
                 // Bottom navigation bar
