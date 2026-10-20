@@ -16,3 +16,7 @@ Archivetune/
 core-at/
 morideobfuscator-at/
 app/release.keystore
+*.keystore.bak
+*.keystore
+*.jks
+*.keystore.bak
