@@ -18,6 +18,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.SimpleCache
@@ -72,40 +73,34 @@ class MusicService : MediaLibraryService(), Player.Listener {
 
     private val songClientMap = ConcurrentHashMap<String, String>()
     private var lastFailedMediaId: String? = null
+    private var previousMediaItemIndex: Int = C.INDEX_UNSET
+    private var previousMediaItem: MediaItem? = null
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .followRedirects(true)
             .followSslRedirects(true)
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val host = request.url.host
-                val isYouTubeHost = host.endsWith("googlevideo.com") ||
-                    host.endsWith("googleusercontent.com") ||
-                    host.endsWith("youtube.com")
+                // ArchiveTune: include youtube-nocookie.com and ytimg.com
+                val isYouTubeMediaHost =
+                    host.endsWith("googlevideo.com") ||
+                        host.endsWith("googleusercontent.com") ||
+                        host.endsWith("youtube.com") ||
+                        host.endsWith("youtube-nocookie.com") ||
+                        host.endsWith("ytimg.com")
 
-                if (!isYouTubeHost) {
-                    chain.proceed(request)
-                } else {
-                    // Apply matching headers per client type embedded in URL params
-                    val clientParam = request.url.queryParameter("c")
-                    val userAgent = when {
-                        clientParam?.startsWith("ANDROID") == true ->
-                            "com.google.android.apps.youtube.music/7.16.52 (Linux; U; Android 13; en_US) gzip"
-                        clientParam?.startsWith("IOS") == true ->
-                            "com.google.ios.youtubemusic/7.08.3 like iPhone"
-                        else ->
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-                    }
-                    val builder = request.newBuilder().header("User-Agent", userAgent)
-                    if (clientParam?.startsWith("WEB") == true || clientParam == null) {
-                        builder
-                            .header("Origin", "https://music.youtube.com")
-                            .header("Referer", "https://music.youtube.com/")
-                    }
-                    chain.proceed(builder.build())
-                }
+                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+
+                // Only apply headers if not already set — matches ArchiveTune interceptor
+                val profile =
+                    com.appplayer.music.utils.StreamClientUtils.resolveRequestProfile(request.url)
+                val requestBuilder = request.newBuilder()
+                com.appplayer.music.utils.StreamClientUtils.applyRequestProfile(requestBuilder, profile)
+                chain.proceed(requestBuilder.build())
             }
             .build()
     }
@@ -196,24 +191,14 @@ class MusicService : MediaLibraryService(), Player.Listener {
      * lazily just before playback, using YTPlayerUtils which implements
      * the full multi-client fallback strategy from ArchiveTune.
      */
-    private fun createDataSourceFactory(): ResolvingDataSource.Factory {
-        // Base: OkHttp data source with our YouTube-aware client
+    private fun createResolvedUpstreamDataSourceFactory(): DataSource.Factory {
         val httpDataSourceFactory = OkHttpDataSource.Factory(mediaOkHttpClient)
-            .setDefaultRequestProperties(
-                mapOf("Accept-Encoding" to "identity")
-            )
+        val chunkedFactory = DataSource.Factory {
+            ChunkedDataSource(httpDataSourceFactory.createDataSource(), ChunkedDataSource.CHUNK_LENGTH)
+        }
+        val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(this, chunkedFactory)
 
-        // Download cache → player cache → network
-        val cacheDataSource = CacheDataSource.Factory()
-            .setCache(playerCache)
-            .setUpstreamDataSourceFactory(
-                CacheDataSource.Factory()
-                    .setCache(downloadCache)
-                    .setUpstreamDataSourceFactory(httpDataSourceFactory)
-            )
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-        return ResolvingDataSource.Factory(cacheDataSource) { dataSpec ->
+        return ResolvingDataSource.Factory(defaultDataSourceFactory) { dataSpec ->
             val mediaId = dataSpec.key
                 ?: dataSpec.uri.getQueryParameter("v")
                 ?: error("No media id in DataSpec (key=null, uri=${dataSpec.uri})")
@@ -253,6 +238,22 @@ class MusicService : MediaLibraryService(), Player.Listener {
 
             dataSpec.withUri(playbackData.streamUrl.toUri())
         }
+    }
+
+    private fun createDataSourceFactory(): DataSource.Factory {
+        val upstreamFactory = createResolvedUpstreamDataSourceFactory()
+
+        val playerCacheFactory = CacheDataSource.Factory()
+            .setCache(playerCache)
+            .setUpstreamDataSourceFactory(upstreamFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        val downloadCacheFactory = CacheDataSource.Factory()
+            .setCache(downloadCache)
+            .setUpstreamDataSourceFactory(playerCacheFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        return downloadCacheFactory
     }
 
     private fun createMediaSourceFactory() = DefaultMediaSourceFactory(
@@ -301,6 +302,47 @@ class MusicService : MediaLibraryService(), Player.Listener {
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
         lastFailedMediaId = null
+
+        val prevItem = previousMediaItem
+        val prevIndex = previousMediaItemIndex
+
+        // If shuffle is enabled and song completed automatically, remove ONLY the completed song
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+            player.shuffleModeEnabled &&
+            player.repeatMode != Player.REPEAT_MODE_ONE &&
+            prevItem != null
+        ) {
+            val count = player.mediaItemCount
+            val completedIndex = if (prevIndex in 0 until count && player.getMediaItemAt(prevIndex).mediaId == prevItem.mediaId) {
+                prevIndex
+            } else {
+                (0 until count).firstOrNull { player.getMediaItemAt(it).mediaId == prevItem.mediaId } ?: C.INDEX_UNSET
+            }
+
+            if (completedIndex != C.INDEX_UNSET) {
+                Timber.d("Shuffle mode: Removing completed track ${prevItem.mediaId} at index $completedIndex")
+                player.removeMediaItem(completedIndex)
+            }
+        }
+
+        previousMediaItem = mediaItem
+        previousMediaItemIndex = player.currentMediaItemIndex
+    }
+
+    override fun onPlaybackStateChanged(playbackState: Int) {
+        super.onPlaybackStateChanged(playbackState)
+        if (playbackState == Player.STATE_ENDED) {
+            if (player.shuffleModeEnabled && player.repeatMode == Player.REPEAT_MODE_OFF) {
+                val currentIndex = player.currentMediaItemIndex
+                if (currentIndex in 0 until player.mediaItemCount) {
+                    val item = player.getMediaItemAt(currentIndex)
+                    Timber.d("Shuffle mode ended: Removing final completed track ${item.mediaId} at index $currentIndex")
+                    player.removeMediaItem(currentIndex)
+                }
+            }
+            previousMediaItem = null
+            previousMediaItemIndex = C.INDEX_UNSET
+        }
     }
 
     // ─── Foreground Service ───────────────────────────────────────────────────
@@ -347,6 +389,8 @@ class MusicService : MediaLibraryService(), Player.Listener {
     // ─── Public API for UI ────────────────────────────────────────────────────
 
     fun playTrack(videoId: String, title: String, artist: String, artworkUri: String? = null) {
+        previousMediaItem = null
+        previousMediaItemIndex = C.INDEX_UNSET
         val mediaItem = MediaItem.Builder()
             .setMediaId(videoId)
             .setCustomCacheKey(videoId)
@@ -367,6 +411,8 @@ class MusicService : MediaLibraryService(), Player.Listener {
     }
 
     fun playQueue(items: List<Triple<String, String, String>>, startIndex: Int = 0) {
+        previousMediaItem = null
+        previousMediaItemIndex = C.INDEX_UNSET
         val mediaItems = items.map { (videoId, title, artist) ->
             MediaItem.Builder()
                 .setMediaId(videoId)

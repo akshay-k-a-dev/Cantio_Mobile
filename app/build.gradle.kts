@@ -74,6 +74,10 @@ android {
             excludes += "META-INF/LICENSE.md"
         }
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 ksp {

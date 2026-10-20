@@ -89,9 +89,15 @@ class InnerTube {
     private fun HttpRequestBuilder.ytClient(client: YouTubeClient, setLogin: Boolean = false) {
         contentType(ContentType.Application.Json)
 
-        // Dynamically adjust host and prefix based on the client to avoid 400 Bad Request
-        val isMusicClient = client.clientName.contains("MUSIC") || client.clientName.contains("REMIX")
-        val baseUrl = if (isMusicClient) YouTubeClient.API_URL_YOUTUBE_MUSIC else YouTubeClient.API_URL
+        // Route to the correct YouTube API host based on the client's origin.
+        // WEB_REMIX and IOS_MUSIC/ANDROID_MUSIC route to music.youtube.com;
+        // all other clients route to www.youtube.com.
+        // Using the wrong host causes 400 Bad Request errors.
+        val clientOrigin = client.origin
+        val baseUrl = when {
+            clientOrigin != null && clientOrigin.contains("music.youtube.com") -> YouTubeClient.API_URL_YOUTUBE_MUSIC
+            else -> YouTubeClient.API_URL
+        }
         val parsedUrl = io.ktor.http.Url(baseUrl)
         url.protocol = parsedUrl.protocol
         url.host = parsedUrl.host
@@ -102,18 +108,19 @@ class InnerTube {
 
         headers {
             append("X-Goog-Api-Format-Version", "1")
+            // clientId goes into X-YouTube-Client-Name, NOT clientName string
             append("X-YouTube-Client-Name", client.clientId)
             append("X-YouTube-Client-Version", client.clientVersion)
-            client.origin?.let { append("X-Origin", it) }
+            // Origin for web clients — required to avoid CORS rejection
+            client.origin?.let { append("Origin", it) }
             client.referer?.let { append("Referer", it) }
             visitorData?.let { append("X-Goog-Visitor-Id", it) }
             if (setLogin) {
-                cookie?.let { append("cookie", it) }
+                cookie?.let { append("Cookie", it) }
             }
         }
         header(HttpHeaders.UserAgent, client.userAgent)
         parameter("prettyPrint", false)
-        parameter("key", client.apiKey)
     }
 
     // ─── Retry helper ─────────────────────────────────────────────────────────
@@ -146,10 +153,11 @@ class InnerTube {
         videoId: String,
         playlistId: String? = null,
         signatureTimestamp: Int? = null,
-        poToken: String? = null
+        poToken: String? = null,
+        setLogin: Boolean = false
     ): HttpResponse = withRetry {
         httpClient.post("player") {
-            ytClient(client, setLogin = true)
+            ytClient(client, setLogin = setLogin)
             setBody(
                 PlayerBody(
                     context = Context.fromClient(client, visitorData),
@@ -208,5 +216,16 @@ class InnerTube {
 
     suspend fun getSwJsData(): HttpResponse = withRetry {
         httpClient.get("https://music.youtube.com/sw.js_data")
+    }
+
+    /**
+     * Request the YouTube Music home page — the response headers contain
+     * X-Goog-Visitor-Id which we use as visitorData for PoToken generation.
+     */
+    suspend fun visitorDataRequest(): HttpResponse = withRetry {
+        httpClient.get("https://music.youtube.com/") {
+            header("X-YouTube-Client-Name", "67")
+            header("X-YouTube-Client-Version", "1.20241127.01.00")
+        }
     }
 }

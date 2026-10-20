@@ -12,3 +12,6 @@ local.properties
 *.keystore
 *.jks
 *.abb
+Archivetune/
+core-at/
+morideobfuscator-at/

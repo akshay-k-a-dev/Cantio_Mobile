@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.timber)
 
     implementation("org.brotli:dec:0.1.2")
-    implementation("com.github.MetrolistGroup:MetrolistExtractor:3cd334185d68d4e5e057dcb9046191b76e4e19ef") {
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") {
         exclude(group = "com.google.protobuf")
     }
 }

@@ -144,8 +144,25 @@ fun NowPlayingScreen(
 
             // Central Area: Cover Art OR Lyrics Panel OR Queue Panel
             if (currentTab == PlayerTab.ARTWORK) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val rawArtworkUri = currentTrack?.artworkUri
+                val highResArtworkUri = remember(rawArtworkUri, currentTrack?.videoId) {
+                    com.appplayer.music.utils.ThumbnailUtils.getHighResArtworkUrl(rawArtworkUri, currentTrack?.videoId)
+                }
+                var imageModel by remember(rawArtworkUri, highResArtworkUri) {
+                    mutableStateOf(highResArtworkUri ?: rawArtworkUri)
+                }
+
                 AsyncImage(
-                    model = currentTrack?.artworkUri,
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(imageModel)
+                        .crossfade(true)
+                        .build(),
+                    onError = {
+                        if (imageModel != rawArtworkUri && rawArtworkUri != null) {
+                            imageModel = rawArtworkUri
+                        }
+                    },
                     contentDescription = currentTrack?.title,
                     modifier = Modifier
                         .weight(1f)

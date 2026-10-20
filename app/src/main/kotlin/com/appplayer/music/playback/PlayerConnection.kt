@@ -342,11 +342,6 @@ class PlayerConnection @Inject constructor(
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     val ctrl = controller
                     if (ctrl != null) {
-                        val count = ctrl.mediaItemCount
-                        val currentIndex = ctrl.currentMediaItemIndex
-                        if (count > currentIndex + 1) {
-                            ctrl.removeMediaItems(currentIndex + 1, count)
-                        }
                         ctrl.addMediaItems(mediaItems)
                     }
                 }
@@ -500,45 +495,82 @@ class PlayerConnection @Inject constructor(
         saveQueueState()
     }
 
+    private fun getUpcomingIndices(ctrl: MediaController): List<Int> {
+        val count = ctrl.mediaItemCount
+        if (count <= 1) return emptyList()
+        val currentIndex = ctrl.currentMediaItemIndex
+        val timeline = ctrl.currentTimeline
+        if (ctrl.shuffleModeEnabled && !timeline.isEmpty) {
+            val indices = mutableListOf<Int>()
+            val visited = mutableSetOf<Int>()
+            var nextIndex = timeline.getNextWindowIndex(
+                currentIndex,
+                Player.REPEAT_MODE_OFF,
+                /* shuffleModeEnabled= */ true
+            )
+            while (nextIndex != androidx.media3.common.C.INDEX_UNSET && nextIndex !in visited && visited.size < count) {
+                visited.add(nextIndex)
+                if (nextIndex in 0 until count && nextIndex != currentIndex) {
+                    indices.add(nextIndex)
+                }
+                nextIndex = timeline.getNextWindowIndex(
+                    nextIndex,
+                    Player.REPEAT_MODE_OFF,
+                    /* shuffleModeEnabled= */ true
+                )
+            }
+            if (indices.isEmpty()) {
+                for (i in 0 until count) {
+                    if (i != currentIndex) indices.add(i)
+                }
+            }
+            return indices
+        } else {
+            val start = if (count > 0) currentIndex + 1 else 0
+            return (start until count).toList()
+        }
+    }
+
     fun getUpcomingQueue(): List<Track> {
         val ctrl = controller ?: return emptyList()
-        val list = mutableListOf<Track>()
-        val start = if (ctrl.mediaItemCount > 0) ctrl.currentMediaItemIndex + 1 else 0
-        for (i in start until ctrl.mediaItemCount) {
-            val item = ctrl.getMediaItemAt(i)
-            list.add(
+        val indices = getUpcomingIndices(ctrl)
+        return indices.mapNotNull { i ->
+            if (i in 0 until ctrl.mediaItemCount) {
+                val item = ctrl.getMediaItemAt(i)
                 Track(
                     videoId = item.mediaId,
                     title = item.mediaMetadata.title?.toString() ?: "",
                     artist = item.mediaMetadata.artist?.toString() ?: "",
                     thumbnail = item.mediaMetadata.artworkUri?.toString()
                 )
-            )
+            } else null
         }
-        return list
     }
 
     fun removeUpcomingTrackAt(relativeIndex: Int) {
         val ctrl = controller ?: return
-        val absoluteIndex = ctrl.currentMediaItemIndex + 1 + relativeIndex
-        if (absoluteIndex in 0 until ctrl.mediaItemCount) {
+        val indices = getUpcomingIndices(ctrl)
+        if (relativeIndex in indices.indices) {
+            val absoluteIndex = indices[relativeIndex]
             ctrl.removeMediaItem(absoluteIndex)
         }
     }
 
     fun moveUpcomingTrack(fromRelative: Int, toRelative: Int) {
         val ctrl = controller ?: return
-        val absoluteFrom = ctrl.currentMediaItemIndex + 1 + fromRelative
-        val absoluteTo = ctrl.currentMediaItemIndex + 1 + toRelative
-        if (absoluteFrom in 0 until ctrl.mediaItemCount && absoluteTo in 0 until ctrl.mediaItemCount) {
+        val indices = getUpcomingIndices(ctrl)
+        if (fromRelative in indices.indices && toRelative in indices.indices) {
+            val absoluteFrom = indices[fromRelative]
+            val absoluteTo = indices[toRelative]
             ctrl.moveMediaItem(absoluteFrom, absoluteTo)
         }
     }
 
     fun skipToUpcomingQueueItem(relativeIndex: Int) {
         val ctrl = controller ?: return
-        val absoluteIndex = ctrl.currentMediaItemIndex + 1 + relativeIndex
-        if (absoluteIndex in 0 until ctrl.mediaItemCount) {
+        val indices = getUpcomingIndices(ctrl)
+        if (relativeIndex in indices.indices) {
+            val absoluteIndex = indices[relativeIndex]
             ctrl.seekToDefaultPosition(absoluteIndex)
         }
     }

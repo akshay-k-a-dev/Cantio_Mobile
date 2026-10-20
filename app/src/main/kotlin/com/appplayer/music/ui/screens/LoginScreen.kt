@@ -8,6 +8,8 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonOutline
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,6 +37,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var otpCode by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -145,7 +149,15 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Password") },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                visualTransformation = PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                        )
+                    }
+                },
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = NeonViolet,

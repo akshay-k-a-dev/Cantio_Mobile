@@ -4,19 +4,20 @@ import com.appplayer.innertube.models.YouTubeClient
 import com.appplayer.innertube.models.response.PlayerResponse
 import io.ktor.http.URLBuilder
 import io.ktor.http.parseQueryString
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.NewPipe
-import org.schabi.newpipe.extractor.downloader.CancellableCall
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
 import org.schabi.newpipe.extractor.exceptions.ParsingException
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
-import org.schabi.newpipe.extractor.stream.StreamInfo
 import java.io.IOException
 import java.net.Proxy
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 
 private class NewPipeDownloaderImpl(
     proxy: Proxy?,
@@ -41,7 +42,7 @@ private class NewPipeDownloaderImpl(
     private val client =
         OkHttpClient
             .Builder()
-            .proxy(proxy)
+            .proxy(proxy ?: Proxy.NO_PROXY)
             .proxyAuthenticator { _, response ->
                 proxyAuth?.let { auth ->
                     response.request
@@ -49,7 +50,13 @@ private class NewPipeDownloaderImpl(
                         .header("Proxy-Authorization", auth)
                         .build()
                 } ?: response.request
-            }.build()
+            }
+            .retryOnConnectionFailure(true)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
+            .build()
 
     @Throws(IOException::class, ReCaptchaException::class)
     override fun execute(request: Request): Response {
@@ -63,9 +70,13 @@ private class NewPipeDownloaderImpl(
                 .Builder()
                 .method(httpMethod, dataToSend?.toRequestBody())
                 .url(url)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
 
+        var hasUserAgent = false
         headers.forEach { (headerName, headerValueList) ->
+            if (headerName.equals("User-Agent", ignoreCase = true) && headerValueList.isNotEmpty()) {
+                hasUserAgent = true
+            }
+
             if (headerValueList.size > 1) {
                 requestBuilder.removeHeader(headerName)
                 headerValueList.forEach { headerValue ->
@@ -76,11 +87,14 @@ private class NewPipeDownloaderImpl(
             }
         }
 
+        if (!hasUserAgent) {
+            requestBuilder.header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+        }
+
         val response = client.newCall(requestBuilder.build()).execute()
 
         if (response.code == 429) {
             response.close()
-
             throw ReCaptchaException("reCaptcha Challenge requested", url)
         }
 
@@ -91,13 +105,8 @@ private class NewPipeDownloaderImpl(
             response.message,
             response.headers.toMultimap(),
             responseBodyToReturn,
-            responseBodyToReturn?.toByteArray(),
             latestUrl,
         )
-    }
-
-    override fun executeAsync(request: Request, callback: AsyncCallback?): CancellableCall {
-        TODO("Placeholder")
     }
 }
 
@@ -106,35 +115,114 @@ object NewPipeUtils {
         NewPipe.init(NewPipeDownloaderImpl(null, null))
     }
 
-    fun getSignatureTimestamp(videoId: String): Result<Int> = runCatching {
-        YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
+    fun getSignatureTimestamp(videoId: String): Result<Int> =
+        runCatching {
+            withJavaScriptPlayerCacheRecovery {
+                YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
+            }
+        }
+
+    /**
+     * Resolve a stream URL from a format, deobfuscating the signature cipher and throttle
+     * parameter (`n`) via NewPipe's YoutubeJavaScriptPlayerManager.
+     *
+     * Ported from ArchiveTune atcore/core/src/.../innertube/pages/NewPipe.kt.
+     * Key differences from old Cantio version:
+     *   - Handles direct URLs with `n` param (throttle deobfuscation).
+     *   - Uses withJavaScriptPlayerCacheRecovery for automatic cache recovery on stale JS player.
+     *   - Applies sp param fallback to "signature" (not requiring it to be present).
+     */
+    fun getStreamUrl(format: PlayerResponse.Format, videoId: String): Result<String> {
+        try {
+            val directUrl = format.url
+            if (directUrl != null) {
+                // If the direct URL contains an `n` throttle parameter, deobfuscate it
+                val resolvedDirectUrl =
+                    if (directUrl.toHttpUrlOrNull()?.queryParameter("n")?.isNotBlank() == true) {
+                        getUrlWithThrottlingParameterDeobfuscated(videoId, directUrl)
+                    } else {
+                        directUrl
+                    }
+                return Result.success(resolvedDirectUrl)
+            }
+
+            val cipherString =
+                format.signatureCipher ?: format.cipher
+                    ?: return Result.failure(ParsingException("Could not find format url"))
+
+            val params = parseQueryString(cipherString)
+            val obfuscatedSignature =
+                params["s"] ?: throw ParsingException("Could not parse cipher signature")
+            // sp param defaults to "signature" if missing
+            val signatureParam = params["sp"]?.takeIf { it.isNotBlank() } ?: "signature"
+            val urlBuilder =
+                params["url"]?.let { URLBuilder(it) }
+                    ?: throw ParsingException("Could not parse cipher url")
+
+            val deobfuscatedSig =
+                withJavaScriptPlayerCacheRecovery {
+                    YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, obfuscatedSignature)
+                }
+            urlBuilder.parameters[signatureParam] = deobfuscatedSig
+
+            val resolvedUrl =
+                getUrlWithThrottlingParameterDeobfuscated(videoId, urlBuilder.buildString())
+
+            return Result.success(resolvedUrl)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            return Result.failure(error)
+        }
     }
 
-    fun getStreamUrl(format: PlayerResponse.Format, videoId: String): Result<String> =
-        runCatching {
-            val url =
-                format.url ?: (format.signatureCipher ?: format.cipher)?.let { signatureCipher ->
-                    val params = parseQueryString(signatureCipher)
-                    val obfuscatedSignature =
-                        params["s"]
-                            ?: throw ParsingException("Could not parse cipher signature")
-                    val signatureParam =
-                        params["sp"]
-                            ?: throw ParsingException("Could not parse cipher signature parameter")
-                    val urlBuilder =
-                        params["url"]?.let { URLBuilder(it) }
-                            ?: throw ParsingException("Could not parse cipher url")
-                    urlBuilder.parameters[signatureParam] =
-                        YoutubeJavaScriptPlayerManager.deobfuscateSignature(
-                            videoId,
-                            obfuscatedSignature,
-                        )
-                    urlBuilder.buildString()
-                } ?: throw ParsingException("Could not find format url")
-
-            return@runCatching YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
-                videoId,
-                url,
-            )
+    private fun getUrlWithThrottlingParameterDeobfuscated(
+        videoId: String,
+        url: String,
+    ): String =
+        withJavaScriptPlayerCacheRecovery {
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
         }
+
+    /**
+     * Executes [block] and if it throws a stale player JS failure (deobfuscation error),
+     * clears all JS player caches and retries once.
+     *
+     * Ported from ArchiveTune atcore/core/src/.../innertube/pages/NewPipe.kt.
+     */
+    private inline fun <T> withJavaScriptPlayerCacheRecovery(block: () -> T): T {
+        try {
+            return block()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            if (!error.isStalePlayerJavaScriptFailure()) {
+                throw error
+            }
+
+            runCatching { YoutubeJavaScriptPlayerManager.clearAllCaches() }
+            try {
+                return block()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (retryFailure: Exception) {
+                retryFailure.addSuppressed(error)
+                throw retryFailure
+            }
+        }
+    }
+
+    private fun Throwable.isStalePlayerJavaScriptFailure(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            if (
+                current is ParsingException &&
+                current.message?.contains("deobfuscation function", ignoreCase = true) == true
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
 }
